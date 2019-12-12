@@ -1,0 +1,255 @@
+'This code is written in Excel Visual Basic For Application under Excel 365 ProPlus. It was tested and used with Aspen HYSYS V10 (36.0.1.250)
+
+Option Explicit
+Public hyApp As HYSYS.Application
+Public simCase As SimulationCase
+Public SG_Stream As ProcessStream
+Public CO2 As ProcessStream
+Public inlet As ProcessStream
+Public first_stage As ProcessStream
+Public second_stage As ProcessStream
+Public third_stage As ProcessStream
+Public Low_LPG_Gas As ProcessStream
+Public High_LPG_Gas As ProcessStream
+Public Q_VRU As ProcessStream
+Public Q_ExportPump As ProcessStream
+Public Export_Oil As ProcessStream
+Public E2101 As HeatExchanger, E2102 As HeatExchanger, E2103 As HeatExchanger
+Public tee_highAPI As TeeOp, tee_lowAPI As TeeOp
+Public Adj_oil As AdjustOp
+Public Adj_oil2 As AdjustOp
+Public Adj_SG As AdjustOp
+Public Adj_SG2 As AdjustOp
+Public Adj_CO2 As AdjustOp
+Public Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal Milliseconds As LongPtr)
+Public CGR As SpreadsheetOp
+Public HYSYS_case As Integer
+
+Public Sub run_master()
+    HYSYS_case = InputBox("Enter Running case No.:")
+    load_hysys
+    set_value (HYSYS_case)
+
+End Sub
+
+Public Sub obtain()
+    obtain_value (HYSYS_case)
+End Sub
+
+Public Function set_value(i As Integer)
+
+    If i < 0 Or i > 64 Then
+        MsgBox "The case is not valid.  Enter cases between 1 and 64."
+        GoTo Warp2
+        Else
+        set_lpg_gas (Worksheets("Sheet3").Range("B" & (i + 29)).Value)
+        set_condy (Worksheets("Sheet3").Range("C" & (i + 29)).Value)
+        set_cgr (Worksheets("Sheet3").Range("D" & (i + 29)).Value)
+        set_oil (Worksheets("Sheet3").Range("E" & (i + 29)).Value)
+        set_CO2 (Worksheets("Sheet3").Range("F" & (i + 29)).Value)
+        set_inlet_temp (Worksheets("Sheet3").Range("G" & (i + 29)).Value)
+     End If
+
+Warp2:
+End Function
+
+Public Function set_inlet_temp(text As String)
+    If text = "92" Then
+        Set inlet = simCase.Flowsheet.MaterialStreams.Item("001")
+        inlet.TemperatureValue = 33.33
+    Else
+        Set inlet = simCase.Flowsheet.MaterialStreams.Item("001")
+        inlet.TemperatureValue = 22.22
+    End If
+End Function
+
+Public Function set_CO2(text As String)
+    If text = "Normal content" Then
+        Set CO2 = simCase.Flowsheet.MaterialStreams.Item("CO2")
+        CO2.MolarFlowValue = 0
+        Set Adj_CO2 = simCase.Flowsheet.Operations.Item("ADJ-CO2")
+        Adj_CO2.IsIgnored = True
+        
+    Else
+        Set CO2 = simCase.Flowsheet.MaterialStreams.Item("CO2")
+        CO2.MolarFlowValue = 0.0256
+        Set Adj_CO2 = simCase.Flowsheet.Operations.Item("ADJ-CO2")
+        Adj_CO2.IsIgnored = False
+        
+    End If
+End Function
+
+Public Function set_lpg_gas(text As String)
+    If text = "HIGH_LPG" Then
+        Set Low_LPG_Gas = simCase.Flowsheet.MaterialStreams.Item("Low LPG Gas")
+        Set High_LPG_Gas = simCase.Flowsheet.MaterialStreams.Item("High LPG Gas")
+        Low_LPG_Gas.MolarFlowValue = 0
+        High_LPG_Gas.MolarFlowValue = 0.9506774265 'Wanted XX MMSCFD input XX/72.27477805
+        
+        Set Adj_SG = simCase.Flowsheet.Operations.Item("ADJ-Sales Gas")
+        Adj_SG.IsIgnored = False
+        Set Adj_SG2 = simCase.Flowsheet.Operations.Item("ADJ-Sales Gas2")
+        Adj_SG2.IsIgnored = True
+        
+    Else
+        Set Low_LPG_Gas = simCase.Flowsheet.MaterialStreams.Item("Low LPG Gas")
+        Set High_LPG_Gas = simCase.Flowsheet.MaterialStreams.Item("High LPG Gas")
+        Low_LPG_Gas.MolarFlowValue = 0.9506774265
+        High_LPG_Gas.MolarFlowValue = 0
+        
+        Set Adj_SG = simCase.Flowsheet.Operations.Item("ADJ-Sales Gas")
+        Adj_SG.IsIgnored = True
+        Set Adj_SG2 = simCase.Flowsheet.Operations.Item("ADJ-Sales Gas2")
+        Adj_SG2.IsIgnored = False
+       
+    End If
+End Function
+
+Public Function set_cgr(text As String)
+    If text = "HIGH_CGR" Then
+        Set CGR = simCase.Flowsheet.Operations("SpreadsheetOp").Item("SPRDSHT-1-2")
+        CGR.Cell("C7").CellValue = 69
+        CGR.Cell("B7").CellValue = 69
+
+    Else
+        Set CGR = simCase.Flowsheet.Operations("SpreadsheetOp").Item("SPRDSHT-1-2")
+        CGR.Cell("C7").CellValue = 17
+        CGR.Cell("B7").CellValue = 17
+
+    End If
+End Function
+Public Function set_oil(text As String)
+Dim ratio, ratio2 As Variant
+Dim hyBDVar As RealVariable
+
+    If text = "HIGH_API Gravity oil" Then
+        Set tee_highAPI = simCase.Flowsheet.Operations("teeop").Item("TEE_HIGH_API_OIL")
+        ratio = tee_highAPI.SplitsValue
+        ratio(0) = 1
+        ratio(1) = 0
+        tee_highAPI.Splits.SetValues ratio
+    
+        Set tee_lowAPI = simCase.Flowsheet.Operations("teeop").Item("TEE_LOW_API_OIL")
+        ratio2 = tee_lowAPI.SplitsValue
+        ratio2(0) = 0
+        ratio2(1) = 1
+        tee_lowAPI.Splits.SetValues ratio2
+        
+        Set Adj_oil = simCase.Flowsheet.Operations.Item("ADJ-Oil Rate")
+        Adj_oil.IsIgnored = False
+        Set Adj_oil2 = simCase.Flowsheet.Operations.Item("ADJ-Oil Rate2")
+        Adj_oil2.IsIgnored = True
+
+    Else
+        Set tee_highAPI = simCase.Flowsheet.Operations("teeop").Item("TEE_HIGH_API_OIL")
+        ratio = tee_highAPI.SplitsValue
+        ratio(0) = 0
+        ratio(1) = 1
+        tee_highAPI.Splits.SetValues ratio
+    
+        Set tee_lowAPI = simCase.Flowsheet.Operations("teeop").Item("TEE_LOW_API_OIL")
+        ratio2 = tee_lowAPI.SplitsValue
+        ratio2(0) = 1
+        ratio2(1) = 0
+        tee_lowAPI.Splits.SetValues ratio2
+        
+        Set Adj_oil = simCase.Flowsheet.Operations.Item("ADJ-Oil Rate")
+        Adj_oil.IsIgnored = True
+        Set Adj_oil2 = simCase.Flowsheet.Operations.Item("ADJ-Oil Rate2")
+        Adj_oil2.IsIgnored = False
+        
+    End If
+End Function
+
+Public Function set_condy(text As String)
+Dim ratio, ratio2 As Variant
+
+    If text = "HIGH_API" Then
+        Set tee_highAPI = simCase.Flowsheet.Operations("teeop").Item("TEE_HIGH_API")
+        ratio = tee_highAPI.SplitsValue
+        ratio(0) = 0
+        ratio(1) = 1
+        tee_highAPI.Splits.SetValues ratio
+    
+        Set tee_lowAPI = simCase.Flowsheet.Operations("teeop").Item("TEE_LOW_API")
+        ratio2 = tee_lowAPI.SplitsValue
+        ratio2(0) = 0
+        ratio2(1) = 1
+        tee_lowAPI.Splits.SetValues ratio2
+
+    Else
+        Set tee_highAPI = simCase.Flowsheet.Operations("teeop").Item("TEE_HIGH_API")
+        ratio = tee_highAPI.SplitsValue
+        ratio(0) = 1
+        ratio(1) = 0
+        tee_highAPI.Splits.SetValues ratio
+    
+        Set tee_lowAPI = simCase.Flowsheet.Operations("teeop").Item("TEE_LOW_API")
+        ratio2 = tee_lowAPI.SplitsValue
+        ratio2(0) = 1
+        ratio2(1) = 0
+        tee_lowAPI.Splits.SetValues ratio2
+        
+    End If
+End Function
+
+Public Function load_hysys()
+Dim fileName As String
+    ' LOADING HYSYS TUTORIAL FILE
+    Set hyApp = CreateObject("HYSYS.Application")
+    hyApp.Visible = True
+    Set simCase = hyApp.ActiveDocument
+    If simCase Is Nothing Then
+        fileName = Worksheets("Sheet3").Range("c63")
+        MsgBox "No HYSYS file open.  Please open HYSYS file first."
+        GoTo Warp1
+        
+        If fileName <> "False" And simCase Is Nothing Then
+            Set simCase = GetObject(fileName, "HYSYS.SimulationCase")
+            simCase.Visible = True
+        End If
+
+    End If
+Warp1:
+End Function
+
+Public Function obtain_value(i As Integer)
+     
+    Set SG_Stream = simCase.Flowsheet.MaterialStreams.Item("121") ' Set sales gas stream 121
+    Worksheets("Sheet3").Range("I" & (i + 29)).Value = SG_Stream.MolecularWeight.GetValue() ' import data MW from Sales Gas Stream
+    Worksheets("Sheet3").Range("J" & (i + 29)).Value = SG_Stream.ComponentMolarFraction(0) * 100     ' import data CO2 Molar Fraction from Sales Gas Stream
+    Worksheets("Sheet3").Range("K" & (i + 29)).Value = -SG_Stream.MassHigherHeatValue.GetValue() * SG_Stream.StdLiqMassDensity.GetValue() * 0.026839192 ' import data GHV from Sales Gas Stream
+    
+    Set first_stage = simCase.Flowsheet.EnergyStreams.Item("Q-1320")
+    Set second_stage = simCase.Flowsheet.EnergyStreams.Item("Q-1350")
+    Set third_stage = simCase.Flowsheet.EnergyStreams.Item("Q-1620")
+
+    Worksheets("Sheet3").Range("L" & (i + 29)).Value = first_stage.Power.GetValue() * 1.34102209
+    Worksheets("Sheet3").Range("M" & (i + 29)).Value = second_stage.Power.GetValue() * 1.34102209
+    Worksheets("Sheet3").Range("N" & (i + 29)).Value = third_stage.Power.GetValue() * 1.34102209
+    Worksheets("Sheet3").Range("O" & (i + 29)).Value = (first_stage.Power.GetValue() + second_stage.Power.GetValue() + third_stage.Power.GetValue()) * 1.34102209
+    
+    Set Q_VRU = simCase.Flowsheet.EnergyStreams.Item("Q-3120/3125")
+    Worksheets("Sheet3").Range("P" & (i + 29)).Value = Q_VRU.Power.GetValue() * 1.34102209
+    
+    Set Q_ExportPump = simCase.Flowsheet.EnergyStreams.Item("Q2401A/B")
+    Worksheets("Sheet3").Range("Q" & (i + 29)).Value = Q_ExportPump.Power.GetValue() * 1.34102209
+
+    Set Export_Oil = simCase.Flowsheet.MaterialStreams.Item("210")
+    Worksheets("Sheet3").Range("R" & (i + 29)).Value = 141.5 / (Export_Oil.MassDensity.GetValue() / 1000) - 131.5
+    Worksheets("Sheet3").Range("S" & (i + 29)).Value = Export_Oil.Viscosity.GetValue()
+
+    Set E2101 = simCase.Flowsheet.Operations.Item("E2101")
+    Worksheets("Sheet3").Range("T" & (i + 29)).Value = E2101.Duty.GetValue() * 3412.142 / 1000000#
+
+    Set E2102 = simCase.Flowsheet.Operations.Item("E2102")
+    Worksheets("Sheet3").Range("U" & (i + 29)).Value = E2102.Duty.GetValue() * 3412.142 / 1000000#
+
+    Set E2103 = simCase.Flowsheet.Operations.Item("E2103")
+    Worksheets("Sheet3").Range("V" & (i + 29)).Value = E2103.Duty.GetValue() * 3412.142 / 1000000#
+
+    Worksheets("Sheet3").Range("W" & (i + 29)).Value = (E2101.Duty.GetValue() + E2102.Duty.GetValue() + E2103.Duty.GetValue()) * 3412.142 / 1000000#
+    
+    Worksheets("Sheet3").Range("W" & (i + 29)).Select
+    
+End Function
